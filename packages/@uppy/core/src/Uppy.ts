@@ -335,6 +335,18 @@ export interface _UppyEventMap<M extends Meta, B extends Body> {
     response?:
       | Omit<NonNullable<UppyFile<M, B>['response']>, 'uploadURL'>
       | undefined,
+  ) => void,
+  'modify-upload-error': (
+    file: UppyFile<M, B> | undefined,
+    error: {
+      name: string
+      message: string
+      request: XMLHttpRequest
+      details?: string
+    },
+    response?:
+      | Omit<NonNullable<UppyFile<M, B>['response']>, 'uploadURL'>
+      | undefined,
   ) => void
   'upload-pause': (file: UppyFile<M, B> | undefined, isPaused: boolean) => void
   'upload-progress': (
@@ -1539,7 +1551,7 @@ export class Uppy<
     ) => {
       let errorMsg = error.message || 'Unknown error'
       if (error.details) {
-        errorMsg += ` ${error.details}`
+        errorMsg += `: ${error.details}`
       }
 
       this.setState({ error: errorMsg })
@@ -1555,8 +1567,6 @@ export class Uppy<
     this.on('error', errorHandler)
 
     this.on('upload-error', (file, error, response) => {
-      errorHandler(error, file, response)
-
       if (typeof error === 'object' && error.message) {
         this.log(error.message, 'error')
         const newError = new Error(
@@ -1567,9 +1577,17 @@ export class Uppy<
         if (error.details) {
           newError.details += ` ${error.details}`
         }
+
+        // @ts-expect-error
+        newError.request = error.request
+
+        this.emit('modify-upload-error', file, newError, response)
         this.#informAndEmit([newError])
+        errorHandler(newError, file, response)
       } else {
+        this.emit('modify-upload-error', file, error as any, response)
         this.#informAndEmit([error])
+        errorHandler(error, file, response)
       }
     })
 
